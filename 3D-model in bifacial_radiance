@@ -1,0 +1,669 @@
+# This section contains the 3D-model of the bifacial PV array created in bifacial_radiance. 
+# Each and every one of the many simulation scenarios of this work are assigned a Modified version 
+# of this script tailored to the specifics of the simulation scenario. For brevity, only the 
+# general script is included here. The script adds the custom radiance materials file to the 
+# folder of each simulation, defines the site specifics, imports the custom EPW file and sets 
+# up the 3D-model of the bifacial PV array. All dimensions, positions, angles and labels are added 
+# according to the measurements of the bifacial PV array described in the master's thesis
+##########################################################################
+
+import os
+from bifacial_radiance import *   
+import numpy as np
+import pandas as pd
+import pprint
+from pathlib import Path
+import ipywidgets as widgets
+from ipywidgets import interact, interactive, fixed, interact_manual, Layout
+from datetime import datetime, date
+
+# select folder to save files and results and name of simulation
+testfolder = r'C:\Users\dinac\OneDrive - NTNU\Documents\bifacial_radiance-main\bifacial_radiance\Bifacial_radiance_simuleringer\IFE_anlegg
+\Results\Simulationname' # add folder to store necessary files and results
+simulationname = 'Simulation_name'  # add simulation name
+
+startdate = '01_01_09'       # define the desired start date
+enddate = '12_31_15'         # define the desired end date
+
+# define simulation specifics
+#albedo =  0.2                    # only use in case of no albedo added to EPW file 
+concrete = True                   # adds the concrete structure below the modules 
+hor_rods = True                   # adds main horizontal rods
+paralell_rods = True              # adds the rods parallel to the modules
+small_par_rods = True             # adds the small rods parallel to the module
+vertical_posts = True             # adds vertical posts
+triangular_north_posts = True     # adds the northmost triangular supportive posts 
+triangular_south_posts = True     # adds the southmost triangular supportive posts
+crossbars = True                  # adds the crossbars 
+
+tarp = False                      # adds tarp to the model
+tarp_color = 'black_tarp'         # defines the material of the tarp (defined by imported custom materials file) 
+tarp_name = 'tarp_black'          # defines tarp material .rad file name 
+
+# Site spesifics
+azimuth_ang = 180          # South-facing panels
+tilt = 45                  # tilt angle of panels
+lat = 59.9725              # IFE Kjeller latitude 59.9725° N
+lon = 11.0505              # IFE Kjeller longitude 11.0505° E
+gcr = 0.33                 # We are only doing 1 row so this doesn't matter
+clearance_height = 0.73    # clearance height from ground to panels in m  
+
+
+# Creating radiance object and generate sky by reading from weather file 
+demo = RadianceObj(simulationname,path = testfolder)  # Create a RadianceObj 'object'
+demo.setGround(albedo)                                # input albedo number 
+
+# Measured input from site as custom EPW file(ghi measured, Disc decomposition model applied to model dni and dhi)
+# epw-file 01-01-2021-31-12-2021
+file =  r'C:\Users\dinac\OneDrive - NTNU\Dina - NTNU\Masteroppgave\database_downloads\epw_files\Custom_epw.epw'.replace('\\', '/')
+metdata = demo.readWeatherFile(file, starttime=startdate, endtime=enddate, coerce_year = 2021) 
+
+# add custom radiance materials to simulation folder 
+materials_file = r'C:\Users\dinac\OneDrive - NTNU\Dina - NTNU\Masteroppgave\Pycharm\custom_materials.rad' # file containing the created  custom radiance materials 
+open(testfolder +'\materials\ground.rad', 'w').close() # clearing rad file 
+f1 = open(testfolder +'\materials\ground.rad', 'a+')
+f2 = open(materials_file, 'r')
+ 
+# appending the contents of the second file to the first file
+f1.write(f2.read())
+f1.close()
+f2.close()
+
+# defining PV modules in 3D-moel 
+moduletype_1 ='Talesun_bifacial_frameless' # the westmost panels with polymer-glass configuration without frame 
+numpanels = 2   # 2-UP configuration: The array has 2 modules along the y direction (N-S since the array is south-facing)
+nMods = 6       # 6 modules length
+nRows = 1       # only 1 row
+
+module_height = 1.005*2 + 0.05  # m (height of the entire 2-UP configuration)
+module_width = 0.805     # m (width of one module)
+numcellsx = 10                 # each panel has 60 cells, 10 in x-direction
+numcellsy = 6                  # each panel has 60 cells, 6 in y-direction
+xcellgap = 0.002          # gap between cells (må måles på site)
+ycellgap = 0.004          # gap between cells (må måles på site) 
+xgap = 0.035              # Leaving 5 centimeters between modules on x direction - (må måles på site)
+ygap = 0.05              # Leaving 10 centimeters between modules on y direction - (må måles på site) 
+zgap = 0                 # no gap to torquetube, due to no torquetube added 
+sensorsy = 6*numpanels +1   # Sampling resolution for the irradiance across the collector width
+xcell = (module_width-(9*xcellgap))/numcellsx
+ycell = (module_height-(10*ycellgap + ygap))/(numcellsy*2)
+
+# saving parameters for further clculation in mismatch analysis
+xcell_frameless = xcell 
+ycell_frameless = ycell 
+z_height_concrete = 0.065 
+
+# Making the cell-level bifacial frameless glass-polymer module with all the variables
+cellLevelModuleParams = {'numcellsx': numcellsx, 'numcellsy':numcellsy, 
+                         'xcell': xcell, 'ycell': ycell, 'xcellgap': xcellgap, 'ycellgap': ycellgap}
+
+mymodule = demo.makeModule(name=moduletype_1, x=1, y=1, xgap=xgap, ygap=ygap, 
+                           zgap=zgap, numpanels=numpanels, glass=glass, z=0.0002)
+mymodule.addCellModule(**cellLevelModuleParams)
+
+# Positioning: 
+translation_distance_x = 0 # This is the center object, no positioning needed
+translation_distance_y = 0 # This is the center object, no positioning needed
+
+# Making the scene by replicating the module and using scene parameters
+sceneDict = {'tilt':tilt,'pitch': round(gcr/mymodule.sceney,3),'clearance_height':clearance_height,
+             'azimuth':azimuth_ang, 'module_type':moduletype_1, 'nMods': nMods, 'nRows': nRows, 
+             'originx':translation_distance_x, 'originy': translation_distance_y, 'appendRadfile':True}  
+
+sceneObj1 = demo.makeScene(module = moduletype_1, sceneDict=sceneDict)  # makeScene creates a .rad file with nMods modules per row, nRows rows.
+
+moduletype_2 ='Talesun_bifacial_with_frame' # the eastmost panels in the array with glass-glass configuration and frame
+numpanels = 2   # 2-UP configuration: The array has 2 modules along the y direction (N-S since the array is south-facing)
+nMods = 4       # 4 modules length
+nRows = 1       # only 1 row
+
+module_height = 1.005*2 + 0.05  # m (height of the entire 2-UP configuration)
+module_width = 0.805     # m (width of one module)
+numcellsx = 10           # each panel has 60 cells, 10 in x-direction
+numcellsy = 6            # each panel has 60 cells, 6 in y-direction
+xcellgap = 0.002          # gap between cells (må måles på site)
+ycellgap = 0.004          # gap between cells (må måles på site) 
+xgap = 0.035              # Leaving 5 centimeters between modules on x direction - (må måles på site)
+ygap = 0.05              # Leaving 10 centimeters between modules on y direction - (må måles på site) 
+zgap = 0                 # no gap to torquetube, due to no torquetube added 
+sensorsy = 6*numpanels +1  # Sampling resolution for the irradiance across the collector width
+xcell = (module_width-(9*xcellgap))/numcellsx
+ycell = (module_height-(10*ycellgap + ygap))/(numcellsy*2)
+
+# saving parameters for further clculation in mismatch analysis
+xcell_framed = xcell 
+ycell_framed = ycell 
+
+# Making the cell-level bifacial with frame module with glass-glass configuration with all the variables
+cellLevelModuleParams = {'numcellsx': numcellsx, 'numcellsy':numcellsy, 
+                         'xcell': xcell, 'ycell': ycell, 'xcellgap': xcellgap, 'ycellgap': ycellgap}
+mymodule = demo.makeModule(name=moduletype_2, x=1, y=1, xgap=xgap, ygap=ygap, 
+                           zgap=zgap, numpanels=numpanels, glass=glass, z=0.0002)
+mymodule.addCellModule(**cellLevelModuleParams)
+
+# Positioning 
+space_between_types = 0.105  # xgap between the two module types 
+translation_distance_x = mymodule.scenex*(5)+ space_between_types # Distance from center of the 6 frameless modules to the center of the 4 with-frame modules 
+translation_distance_y = 0 # The new modules are an extension of the row, hence no translation in y-direction needed
+
+# Making the scene by replicating the module and using scene parameters
+sceneDict2 = {'tilt':tilt,'pitch': round(gcr/mymodule.sceney,3),'clearance_height':clearance_height,
+              'azimuth':azimuth_ang, 'module_type':moduletype_2, 'nMods': nMods, 'nRows': nRows, 
+              'originx': translation_distance_x , 'originy': translation_distance_y, 'appendRadfile':True}  
+sceneObj2 = demo.makeScene(module = moduletype_2, sceneDict=sceneDict2)  # makeScene creates a .rad file with nMods modules per row, nRows rows.
+
+z_height = 0.065  
+z_height_concrete = z_height
+
+if concrete == True: 
+    # Custom square object 
+    name='Concrete_surface'
+
+    # Define object size 
+    x_length = 10.9     # x-length of object
+    y_width = 2.1                              # y-width of object
+    z_height = z_height                             # z-height of object 
+
+    # Define object position 
+    position_x = -(mymodule.scenex*(2.5) + 0.1)   # x-position of object relative to center marker (here, negative to move object further to the left (west))
+    position_y = -0.80                          # y-position of object relative to center marker (here, negative to move object further away (north))
+    position_z = 0                              # z-position of object relative to center marker (here, positive to move object up from the ground )
+
+    text='! genbox Concrete CenterPatch {} {} {}| xform -t {} {} {}'.format(x_length,y_width,z_height, position_x, position_y, position_z)
+
+    customObject = demo.makeCustomObject(name,text)
+    demo.appendtoScene(sceneObj1.radfiles, customObject, '!xform -rz 0')
+
+if hor_rods == True: 
+
+    # Custom square object - horizontal rods 
+    Utstikk_A = 0.295
+    Utstikk_B = 0.27
+
+    x_length = (mymodule.scenex*(10)) + Utstikk_A + Utstikk_B + space_between_types  # x-length of object
+    y_width = 0.055                                 # y-width of object
+    z_height = 0.075                                 # z-height of object 
+    material = 'Metal_Aluminum_Anodized'
+    ########################## lower rod ##########################
+    name='stand_horizontal_rod_1'
+
+    # Define object position 
+    position_x = -(mymodule.scenex*(2.5)) - Utstikk_A #+1.2*xgap       # x-position of object relative to center marker (here, negative to move object further to the left (west))
+    position_y = -(mymodule.sceney/2)*np.cos(np.radians(tilt))  # y-position of object relative to center marker (here, negative to move object further away (north))
+    position_z = clearance_height                                    # z-position of object relative to ground 
+    nudge = 0.05           # below panel edge 
+
+    text='! genbox {} CenterPatch {} {} {}| xform -t 0 -{} -0.1 -rx {} -t {} {} {}'.format(material, x_length,y_width,z_height, nudge, tilt, position_x, position_y, position_z)
+    
+    customObject = demo.makeCustomObject(name,text)
+    demo.appendtoScene(sceneObj1.radfiles, customObject, '!xform -rz 0')
+ 
+
+    ########################## middle rod ##########################
+    name='stand_horizontal_rod_2'
+
+    # Define object position 
+    position_x = -(mymodule.scenex*(2.5)) - Utstikk_A  # +1.2*xgap           # x-position of object relative to center marker (here, negative to move object further to the left (west))
+    position_y = 0                                                      # y-position of object relative to center marker (here, negative to move object further away (north))
+    position_z = clearance_height + (mymodule.sceney/2)*np.sin(np.radians(tilt))  # z-position of object relative to ground   
+    nudge = 0.025  # middle of gap between panels 
+
+    text='! genbox {} CenterPatch {} {} {}| xform -t 0 -{} -0.1 -rx {} -t {} {} {}'.format(material, x_length,y_width,z_height, nudge, tilt, position_x, position_y, position_z)
+   
+    customObject = demo.makeCustomObject(name,text)
+    demo.appendtoScene(sceneObj1.radfiles, customObject, '!xform -rz 0')
+
+
+
+    ########################## upper rod ##########################
+    name='stand_horizontal_rod_3'
+
+    # Define object position 
+    position_x = -(mymodule.scenex*(2.5))  - Utstikk_A # +1.2*xgap         # x-position of object relative to center marker (here, negative to move object further to the left (west))
+    position_y = (mymodule.sceney/2)*np.cos(np.radians(tilt))    # y-position of object relative to center marker (here, positive to move object further away (north))
+    position_z = clearance_height + (mymodule.sceney)*np.sin(np.radians(tilt))  # z-position of object relative to ground     
+    nudge = 0    # above the panel edge 
+
+    text='! genbox {} CenterPatch {} {} {}| xform -t 0 -{} -0.1 -rx {} -t {} {} {}'.format(material, x_length,y_width,z_height, nudge, tilt, position_x, position_y, position_z)
+    
+    customObject = demo.makeCustomObject(name,text)
+    demo.appendtoScene(sceneObj1.radfiles, customObject, '!xform -rz 0')
+
+    # saving variables for further use in calculation positions
+    y_width_horizontal = 0.055
+    z_height_horizontal  = 0.075
+    
+    
+    
+if paralell_rods == True: 
+    z_height_horizontal  = 0.075
+    y_width_horizontal = 0.055
+    # Custom square object - parallel rods 
+    x_length = 0.045                              # x-length of object
+    y_width = (mymodule.sceney) + 0.20            # y-width of object (panel height + extra length in both ends) 225cm in total
+    z_height = 0.065                              # z-height of object 
+    material = 'Metal_Aluminum_Anodized'
+    ########################## parallel rod 1 ##########################
+    name='stand_parallel_rod_1'
+
+    # Define object position 
+    position_x = -(mymodule.scenex*(2.5))                        # x-position of object relative to center marker (here, negative to move object further to the left (west))
+    position_y = -(mymodule.sceney/2)*np.cos(np.radians(tilt))   # y-position of object relative to center marker (here, negative to move object further away (north))
+    position_z = clearance_height                                     # z-position of object relative to ground 
+    nudge = -0.06   # nudge to adjust for center (Utstikk c) 
+    nudge2 = - z_height_horizontal*np.cos(np.radians(tilt))  
+    nudge3= -(z_height_horizontal*np.sin(np.radians(tilt)) +  y_width_horizontal*np.sin(np.radians(tilt)))
+
+    text='! genbox {} CenterPatch {} {} {}| xform -t 0 {} -0.075 -t 0 {} {} -rx {} -t {} {} {}'.format(material, x_length,y_width,z_height, nudge, nudge2 ,nudge3 ,tilt, position_x, position_y, position_z)
+    
+    customObject = demo.makeCustomObject(name,text)
+    demo.appendtoScene(sceneObj1.radfiles, customObject, '!xform -rz 0')
+
+    paralell_pos_1 = position_x  # saving variables for further use in calculation positions
+
+    ########################## parallel rod 2 ##########################
+    name='stand_parallel_rod_2'
+
+    # Define object position 
+    position_x = (mymodule.scenex*(1.5))                         # x-position of object relative to center marker (here, negative to move object further to the left (west))
+    position_y = -(mymodule.sceney/2)*np.cos(np.radians(tilt))   # y-position of object relative to center marker (here, negative to move object further away (north))
+    position_z = clearance_height                                     # z-position of object relative to ground             
+    nudge_x = x_length/2  # nudge in x-direction to adjust for center  
+    nudge_y = -0.065         # nudge in y-direction to adjust for center  
+    nudge2 = - z_height_horizontal*np.cos(np.radians(tilt))           # positioning below the horizontal beams in x-direction
+    nudge3= -(z_height_horizontal*np.sin(np.radians(tilt)) +  y_width_horizontal*np.sin(np.radians(tilt))) # positioning below the horizontal beams in y-direction
+
+    text='! genbox {} CenterPatch {} {} {}| xform -t {} {} -0.075 -t 0 {} {} -rx {} -t {} {} {}'.format(material, x_length,y_width,z_height, nudge_x, nudge_y, nudge2 ,nudge3 ,tilt, position_x, position_y, position_z)
+    
+    customObject = demo.makeCustomObject(name,text)
+    demo.appendtoScene(sceneObj1.radfiles, customObject, '!xform -rz 0')
+
+    paralell_pos_2 = position_x + nudge_x # saving variables for further use in calculation positions
+
+    ########################## parallel rod 3 ##########################
+    name='stand_parallel_rod_3'
+
+    # Define object position 
+    position_x = (mymodule.scenex*(3.5))                         # x-position of object relative to center marker (here, negative to move object further to the left (west))
+    position_y = -(mymodule.sceney/2)*np.cos(np.radians(tilt))   # y-position of object relative to center marker (here, negative to move object further away (north))
+    position_z = clearance_height                                     # z-position of object relative to ground     
+    nudge_x = x_length/2 + 0.5*xgap
+    nudge_y = -0.065   # nudge half the added length on y_width to adjust for center  
+    nudge2 = - z_height_horizontal*np.cos(np.radians(tilt))           # positioning below the horizontal beams in x-direction
+    nudge3= -(z_height_horizontal*np.sin(np.radians(tilt)) +  y_width_horizontal*np.sin(np.radians(tilt)))  # positioning below the horizontal beams in y-direction
+
+    text='! genbox {} CenterPatch {} {} {}| xform -t {} {} -0.075 -t 0 {} {} -rx {} -t {} {} {}'.format(material, x_length,y_width,z_height, nudge_x, nudge_y, nudge2 ,nudge3 ,tilt, position_x, position_y, position_z)
+    
+    customObject = demo.makeCustomObject(name,text)
+    demo.appendtoScene(sceneObj1.radfiles, customObject, '!xform -rz 0')
+
+    paralell_pos_3 = position_x + nudge_x # saving variables for further use in calculation positions
+
+    ########################## parallel rod 4 ##########################
+    name='stand_parallel_rod_4'
+
+    # Define object position 
+    position_x = (mymodule.scenex*(7.5))  # +0.4 *xgap    # x-position of object relative to center marker (here, negative to move object further to the left (west))
+    position_y = -(mymodule.sceney/2)*np.cos(np.radians(tilt))   # y-position of object relative to center marker (here, negative to move object further away (north))
+    position_z = clearance_height 
+    nudge_x = x_length/2 + 2*xgap
+    nudge_y = -0.065   # nudge half the added length on y_width to adjust for center  
+    nudge2 = - z_height_horizontal*np.cos(np.radians(tilt))  
+    nudge3= -(z_height_horizontal*np.sin(np.radians(tilt)) +  y_width_horizontal*np.sin(np.radians(tilt)))
+
+    text='! genbox {} CenterPatch {} {} {}| xform -t {} {} -0.075 -t 0 {} {} -rx {} -t {} {} {}'.format(material, x_length,y_width,z_height, nudge_x, nudge_y, nudge2 ,nudge3 ,tilt, position_x, position_y, position_z)
+    
+    customObject = demo.makeCustomObject(name,text)
+    demo.appendtoScene(sceneObj1.radfiles, customObject, '!xform -rz 0')
+
+    paralell_pos_4 = position_x + nudge_x # saving variables for further use in calculation positions
+
+if small_par_rods == True: 
+        # Custom square object - parallel rods 
+    x_length = 0.04                                # x-length of object
+    y_width = (mymodule.sceney) + 0.11         # y-width of object (panel height + extra length in both ends)
+    
+    z_height = 0.002                               # z-height of object 
+    material = 'Metal_Aluminum_Anodized'
+
+    ########################## parallel rod 1 ##########################
+    name='small_parallel_rod_1'
+
+    # Define object position 
+    position_x = -(mymodule.scenex*(0.5))                        # x-position of object relative to center marker (here, negative to move object further to the left (west))
+    position_y = -(mymodule.sceney/2)*np.cos(np.radians(tilt))   # y-position of object relative to center marker (here, negative to move object further away (north))
+    position_z = clearance_height                                     # z-position of object relative to ground 
+    nudge = -0.02  # nudge to adjust for center  
+    nudge2 = - z_height_horizontal*np.cos(np.radians(tilt))  
+    nudge3= -(z_height_horizontal*np.sin(np.radians(tilt)) +  y_width_horizontal*np.sin(np.radians(tilt)))
+
+    text='! genbox {} CenterPatch {} {} {}| xform -t 0 {} -0.004 -t 0 {} {} -rx {} -t {} {} {}'.format(material, x_length,y_width,z_height, nudge, nudge2 ,nudge3 ,tilt, position_x, position_y, position_z)
+     
+    customObject = demo.makeCustomObject(name,text)
+    demo.appendtoScene(sceneObj1.radfiles, customObject, '!xform -rz 0')
+
+    ########################## small parallel rod 2 ##########################
+    name='small_parallel_rod_2'
+
+    # Define object position 
+    position_x = (mymodule.scenex*(5.5))                         # x-position of object relative to center marker (here, negative to move object further to the left (west))
+    position_y = -(mymodule.sceney/2)*np.cos(np.radians(tilt))   # y-position of object relative to center marker (here, negative to move object further away (north))
+    position_z = clearance_height                                     # z-position of object relative to ground 
+    nudge = -0.02  # nudge to adjust for center  
+    nudge2 = - z_height_horizontal*np.cos(np.radians(tilt))  
+    nudge3= -(z_height_horizontal*np.sin(np.radians(tilt)) +  y_width_horizontal*np.sin(np.radians(tilt)))
+
+    text='! genbox {} CenterPatch {} {} {}| xform -t {} {} -0.004 -t 0 {} {} -rx {} -t {} {} {}'.format(material, x_length,y_width,z_height, space_between_types, nudge, nudge2 ,nudge3 ,tilt, position_x, position_y, position_z)
+     
+    customObject = demo.makeCustomObject(name,text)
+    demo.appendtoScene(sceneObj1.radfiles, customObject, '!xform -rz 0')
+
+if vertical_posts == True: 
+    # Custom square object - vertical posts 
+    position_y = -0.13   # offset from center in y-direction 
+
+    x_length = 0.04                                # x-length of object
+    y_width = 0.04                                 # y-width of object (panel height + extra length in both ends)
+    z_height = clearance_height + ((mymodule.sceney)/2)*np.sin(np.radians(tilt)) - (-position_y*np.tan(np.radians(tilt))) -0.08   # z-height of object 
+    material = 'Metal_Aluminum_Anodized'
+
+    ########################## vertical post 1 ##########################
+    name='small_vertical_post_1'
+
+    # Define object position 
+    position_x = -(mymodule.scenex*(0.5))        # x-position of object relative to center marker (here, negative to move object further to the left (west))
+    position_z = 0                                    # z-position of object relative to ground 
+
+    text='! genbox {} CenterPatch {} {} {}| xform -t -{} -{} 0 -t {} {} {}'.format(material, x_length, y_width, z_height, (x_length/2), (y_width/2), position_x, position_y, position_z)
+    
+    customObject = demo.makeCustomObject(name,text)
+    demo.appendtoScene(sceneObj1.radfiles, customObject, '!xform -rz 0')
+
+
+    ########################## vertical post 2 ##########################
+    name='small_vertical_post_2'
+
+    # Define object position 
+    position_x = (mymodule.scenex*(5.5)) + space_between_types       # x-position of object relative to center marker (here, negative to move object further to the left (west))
+    position_z = 0                                    # z-position of object relative to ground 
+
+    text='! genbox {} CenterPatch {} {} {}| xform -t 0 -{} 0 -t {} {} {}'.format(material, x_length, y_width, z_height, (y_width/2), position_x, position_y, position_z)
+    
+    customObject = demo.makeCustomObject(name,text)
+    demo.appendtoScene(sceneObj1.radfiles, customObject, '!xform -rz 0')
+    
+if triangular_north_posts == True: 
+    # Custom square object - triangular northmost supportive posts 
+
+    # Measurements form site 
+    M1 = 1.18   # Må måles! 
+    M2 = 0.15   # Må måles! 
+    M3 = 1.94   # Må måles! 
+    M4 = 0.65   # Må måles! 
+    M5 = 1.44   # Må måles! 
+
+    # Calculations for the post
+    a = np.sqrt((M2)**2 + (M3)**2)
+    alpha = np.degrees(np.arccos(M2/a))
+    alpha2 = 90- alpha
+    b = np.sqrt((M4)**2 + (M5)**2)
+    beta = np.degrees(np.arccos(M4/b))
+    beta2 = 90- beta
+
+    a = 1.95
+    alpha = 84.2
+    alpha2 = 90- alpha
+
+    b = 1.58
+    beta=66.1
+    beta2 = 90 -beta
+
+    # Parameters of the posts 
+    x_length = 0.04                                # x-length of object
+    y_width = 0.04                                 # y-width of object
+    material = 'Metal_Aluminum_Anodized'
+    position_y =  M1-((np.cos(tilt)*(mymodule.sceney/2))/2)                               # offset from center in y-direction at the concrete floor  
+    position_z = z_height_concrete                 # z-position of object relative to ground 
+
+    z_height = a 
+    
+    
+    ########################## inclined northmost post 1 (outer)  #################
+    name='inclined_northmost_post_1'
+    position_x = paralell_pos_1     # x-position of object relative to center marker (here, negative to move object further to the left (west))
+    text='! genbox {} CenterPatch {} {} {}| xform -t 0 -{} 0 -rx {} -t {} {} {}'.format(material, x_length, y_width, z_height, (y_width/2), alpha2, position_x, position_y, position_z)
+    customObject = demo.makeCustomObject(name,text)
+    demo.appendtoScene(sceneObj1.radfiles, customObject, '!xform -rz 0')
+
+    ########################## inclined northmost post 2 (outer)  #################
+    name='inclined_northmost_post_2'
+    position_x = paralell_pos_2       # x-position of object relative to center marker (here, negative to move object further to the left (west))
+    text='! genbox {} CenterPatch {} {} {}| xform -t 0 -{} 0 -rx {} -t {} {} {}'.format(material, x_length, y_width, z_height, (y_width/2), alpha2, position_x, position_y, position_z)
+    customObject = demo.makeCustomObject(name,text)
+    demo.appendtoScene(sceneObj1.radfiles, customObject, '!xform -rz 0')       
+    
+    ########################## inclined northmost post 3 (outer)  #################
+    name='inclined_northmost_post_3'
+    position_x = paralell_pos_3      # x-position of object relative to center marker (here, negative to move object further to the left (west))
+    text='! genbox {} CenterPatch {} {} {}| xform -t 0 -{} 0 -rx {} -t {} {} {}'.format(material, x_length, y_width, z_height, (y_width/2), alpha2, position_x, position_y, position_z)
+    customObject = demo.makeCustomObject(name,text)
+    demo.appendtoScene(sceneObj1.radfiles, customObject, '!xform -rz 0')
+
+    ########################## inclined northmost post 4 (outer)  #################
+    name='inclined_northmost_post_4'
+    position_x = paralell_pos_4      # x-position of object relative to center marker (here, negative to move object further to the left (west))
+    text='! genbox {} CenterPatch {} {} {}| xform -t 0 -{} 0 -rx {} -t {} {} {}'.format(material, x_length, y_width, z_height, (y_width/2), alpha2, position_x, position_y, position_z)
+    customObject = demo.makeCustomObject(name,text)
+    demo.appendtoScene(sceneObj1.radfiles, customObject, '!xform -rz 0')
+
+    
+    
+    z_height = b 
+    ########################## inclined northmost post 1 (inner)  #################
+    name='inclined_northmost_post_1_inner'
+    position_x = paralell_pos_1     # x-position of object relative to center marker (here, negative to move object further to the left (west))
+    text='! genbox {} CenterPatch {} {} {}| xform -t 0 -{} 0 -rx {} -t {} {} {}'.format(material, x_length, y_width, z_height, (y_width/2), beta2, position_x, position_y, position_z)
+    customObject = demo.makeCustomObject(name,text)
+    demo.appendtoScene(sceneObj1.radfiles, customObject, '!xform -rz 0')
+
+    ########################## inclined northmost post 2 (inner)  #################
+    name='inclined_northmost_post_2_inner'
+    position_x = paralell_pos_2       # x-position of object relative to center marker (here, negative to move object further to the left (west))
+    text='! genbox {} CenterPatch {} {} {}| xform -t 0 -{} 0 -rx {} -t {} {} {}'.format(material, x_length, y_width, z_height, (y_width/2), beta2, position_x, position_y, position_z)
+    customObject = demo.makeCustomObject(name,text)
+    customObject = demo.makeCustomObject(name,text)
+    demo.appendtoScene(sceneObj1.radfiles, customObject, '!xform -rz 0')
+
+    ########################## inclined northmost post 3 (inner)  #################
+    name='inclined_northmost_post_3_inner'
+    position_x = paralell_pos_3      # x-position of object relative to center marker (here, negative to move object further to the left (west))
+    text='! genbox {} CenterPatch {} {} {}| xform -t 0 -{} 0 -rx {} -t {} {} {}'.format(material, x_length, y_width, z_height, (y_width/2), beta2, position_x, position_y, position_z)
+    customObject = demo.makeCustomObject(name,text)
+    customObject = demo.makeCustomObject(name,text)
+    demo.appendtoScene(sceneObj1.radfiles, customObject, '!xform -rz 0')
+
+    ########################## inclined northmost post 4 (inner)  #################
+    name='inclined_northmost_post_4_inner'
+    position_x = paralell_pos_4      # x-position of object relative to center marker (here, negative to move object further to the left (west))
+    text='! genbox {} CenterPatch {} {} {}| xform -t 0 -{} 0 -rx {} -t {} {} {}'.format(material, x_length, y_width, z_height, (y_width/2), beta2, position_x, position_y, position_z)
+    customObject = demo.makeCustomObject(name,text)
+    customObject = demo.makeCustomObject(name,text)
+    demo.appendtoScene(sceneObj1.radfiles, customObject, '!xform -rz 0')
+
+if triangular_south_posts == True: 
+    # Custom square object - triangular southmost supportive posts 
+
+    # Measurements form site 
+    M6 = 0.28   # Må måles! 
+    M7 = 0.5    # Må måles! 
+    M8 = 1.27    # Må måles! 
+    M9 = 0.05   # Må måles! 
+    M10 = 0.76   # Må måles! 
+
+
+    # Calculations for the post
+    c = np.sqrt((M7)**2 + (M8)**2)
+    gamma = np.degrees(np.arccos(M7/c))
+    gamma2 = 90- gamma
+    d = np.sqrt((M9)**2 + (M10)**2)
+    delta = np.degrees(np.arccos(M9/d))
+    delta2 = 90- delta
+
+    c = 0.76
+    gamma = 83.7
+    gamma2 = 90-gamma
+
+    d = 1.35
+    delta = 67.3
+    delta2 = 90-delta
+
+
+    # Parameters of the posts 
+    x_length = 0.04                                # x-length of object
+    y_width = 0.04                                 # y-width of object
+    material = 'Metal_Aluminum_Anodized'
+    position_y =  M6+((np.cos(tilt)*(mymodule.sceney/2))/2)                                 # offset from center in y-direction at the concrete floor  
+    position_z = z_height_concrete                 # z-position of object relative to ground 
+
+
+    z_height = d 
+    ########################## inclined southmost post 1 (outer)  #################
+    name='inclined_southmost_post_1'
+    position_x = paralell_pos_1     # x-position of object relative to center marker (here, negative to move object further to the left (west))
+    text='! genbox {} CenterPatch {} {} {}| xform -t 0 {} 0 -rx -{} -t {} -{} {}'.format(material, x_length, y_width, z_height, (y_width/2), delta2, position_x, position_y, position_z)
+    customObject = demo.makeCustomObject(name,text)
+    demo.appendtoScene(sceneObj1.radfiles, customObject, '!xform -rz 0')
+
+    ########################## inclined southmost post 2 (outer)  #################
+    name='inclined_southmost_post_2'
+    position_x = paralell_pos_2     # x-position of object relative to center marker (here, negative to move object further to the left (west))
+    text='! genbox {} CenterPatch {} {} {}| xform -t 0 {} 0 -rx -{} -t {} -{} {}'.format(material, x_length, y_width, z_height, (y_width/2), delta2, position_x, position_y, position_z)
+    customObject = demo.makeCustomObject(name,text)
+    demo.appendtoScene(sceneObj1.radfiles, customObject, '!xform -rz 0')
+
+    ########################## inclined southmost post 3 (outer)  #################
+    name='inclined_southmost_post_3'
+    position_x = paralell_pos_3     # x-position of object relative to center marker (here, negative to move object further to the left (west))
+    text='! genbox {} CenterPatch {} {} {}| xform -t 0 {} 0 -rx -{} -t {} -{} {}'.format(material, x_length, y_width, z_height, (y_width/2), delta2, position_x, position_y, position_z)
+    customObject = demo.makeCustomObject(name,text)
+    demo.appendtoScene(sceneObj1.radfiles, customObject, '!xform -rz 0')
+
+    ########################## inclined southmost post 4 (outer)  #################
+    name='inclined_southmost_post_4'
+    position_x = paralell_pos_4     # x-position of object relative to center marker (here, negative to move object further to the left (west))
+    text='! genbox {} CenterPatch {} {} {}| xform -t 0 {} 0 -rx -{} -t {} -{} {}'.format(material, x_length, y_width, z_height, (y_width/2), delta2, position_x, position_y, position_z)
+    customObject = demo.makeCustomObject(name,text)
+    demo.appendtoScene(sceneObj1.radfiles, customObject, '!xform -rz 0')
+
+
+    z_height = c 
+    ########################## inclined southmost post 1 (inner)  #################
+    name='inclined_southmost_post_1_inner'
+    position_x = paralell_pos_1     # x-position of object relative to center marker (here, negative to move object further to the left (west))
+    text='! genbox {} CenterPatch {} {} {}| xform -t 0 {} 0 -rx -{} -t {} -{} {}'.format(material, x_length, y_width, z_height, (y_width/2), gamma2, position_x, position_y, position_z)
+    customObject = demo.makeCustomObject(name,text)
+    demo.appendtoScene(sceneObj1.radfiles, customObject, '!xform -rz 0')
+
+    ########################## inclined southmost post 2 (inner)  #################
+    name='inclined_southmost_post_2_inner'
+    position_x = paralell_pos_2     # x-position of object relative to center marker (here, negative to move object further to the left (west))
+    text='! genbox {} CenterPatch {} {} {}| xform -t 0 {} 0 -rx -{} -t {} -{} {}'.format(material, x_length, y_width, z_height, (y_width/2), gamma2, position_x, position_y, position_z)
+    customObject = demo.makeCustomObject(name,text)
+    demo.appendtoScene(sceneObj1.radfiles, customObject, '!xform -rz 0')
+
+    ########################## inclined southmost post 3 (inner)  #################
+    name='inclined_southmost_post_3_inner'
+    position_x = paralell_pos_3     # x-position of object relative to center marker (here, negative to move object further to the left (west))
+    text='! genbox {} CenterPatch {} {} {}| xform -t 0 {} 0 -rx -{} -t {} -{} {}'.format(material, x_length, y_width, z_height, (y_width/2), gamma2, position_x, position_y, position_z)
+    customObject = demo.makeCustomObject(name,text)
+    demo.appendtoScene(sceneObj1.radfiles, customObject, '!xform -rz 0')
+
+    ########################## inclined southmost post 4 (inner)  #################
+    name='inclined_southmost_post_4_inner'
+    position_x = paralell_pos_4     # x-position of object relative to center marker (here, negative to move object further to the left (west))
+    text='! genbox {} CenterPatch {} {} {}| xform -t 0 {} 0 -rx -{} -t {} -{} {}'.format(material, x_length, y_width, z_height, (y_width/2), gamma2, position_x, position_y, position_z)
+    customObject = demo.makeCustomObject(name,text)
+    demo.appendtoScene(sceneObj1.radfiles, customObject, '!xform -rz 0')
+    
+if crossbars == True:
+    # Custom square object - stability crossbars  
+
+    # Measurements form site 
+    M11 = 1.32   # Må måles! 
+    M12 = 0.42    # Må måles! 
+    M13 = 0.04    # Må måles! 
+
+    # Calculations for the crossbars
+    e = (mymodule.scenex*(4))
+    f = np.sqrt((M11)**2 + (e)**2)
+    epsilon = np.degrees(np.arccos(e/f))
+    epsilon2 = 90 -epsilon
+
+    f = 3.73
+    epsilon = 21
+    epsilon2 = 90-epsilon
+
+    # Parameters of the posts 
+    x_length = 0.05   # x-length of object
+    y_width = 0.025                                 # y-width of object
+    z_height = f-0.05                                # z-height of object 
+    material = 'Metal_Aluminum_Anodized'
+    position_y =  1.06-M13 -0.15 #+ y_width  + 0.05                            # offset from center in y-direction at the concrete floor  
+    position_z = z_height_concrete + M12                 # z-position of object relative to ground 
+
+    ########################## crossbar 1  #################
+    name='crossbar_1'
+    z_height = z_height -0.03
+    position_x = paralell_pos_1 + 0.02     # x-position of object relative to center marker (here, negative to move object further to the left (west))
+    text='! genbox {} CenterPatch {} {} {}| xform -t -{} -{} 0 -ry {} -rx {} -t {} {} {}'.format(material, x_length, y_width, z_height, (x_length/2), (y_width/2), epsilon2, alpha2, position_x, position_y, position_z)
+    customObject = demo.makeCustomObject(name,text)
+    demo.appendtoScene(sceneObj1.radfiles, customObject, '!xform -rz 0')
+
+    ########################## crossbar 2  #################
+    z_height = z_height +0.02
+    name='crossbar_2'
+    position_x = paralell_pos_3  +0.01   # x-position of object relative to center marker (here, negative to move object further to the left (west))
+    text='! genbox {} CenterPatch {} {} {}| xform -t -{} -{} 0 -ry {} -rx {} -t {} {} {}'.format(material, x_length, y_width, z_height, (x_length/2), (y_width/2), epsilon2, alpha2, position_x, position_y, position_z)
+    customObject = demo.makeCustomObject(name,text)
+    demo.appendtoScene(sceneObj1.radfiles, customObject, '!xform -rz 0')
+
+    ########################## crossbar 3  #################
+    name='crossbar_3'
+    position_x = paralell_pos_4 +0.03    # x-position of object relative to center marker (here, negative to move object further to the left (west))
+    text='! genbox {} CenterPatch {} {} {}| xform -t -{} -{} 0 -ry -{} -rx {} -t {} {} {}'.format(material, x_length, y_width, z_height, (x_length/2), (y_width/2), epsilon2, alpha2, position_x, position_y, position_z)
+    customObject = demo.makeCustomObject(name,text)
+    demo.appendtoScene(sceneObj1.radfiles, customObject, '!xform -rz 0')
+
+    ########################## crossbar 4  #################
+    z_height = z_height -0.02
+    name='crossbar_4'
+    position_x = paralell_pos_2  + 0.05  # x-position of object relative to center marker (here, negative to move object further to the left (west))
+    text='! genbox {} CenterPatch {} {} {}| xform -t -{} -{} 0 -ry -{} -rx {} -t {} {} {}'.format(material, x_length, y_width, z_height, (x_length/2), (y_width/2), epsilon2, alpha2, position_x, position_y, position_z)
+    customObject = demo.makeCustomObject(name,text)
+    demo.appendtoScene(sceneObj1.radfiles, customObject, '!xform -rz 0')
+
+if tarp == True: 
+    material = tarp_color
+    name = tarp_name
+
+    # Values from tarp size estimation 
+    r = 5.11 # m 
+    x = 7.32 # m
+    a = (np.cos(np.radians(tilt))*(mymodule.sceney*1.5))
+    b = (np.cos(np.radians(tilt))*(mymodule.sceney*0.5))
+    x2 = 1.32
+
+    # Define object size 
+    x_length = (mymodule.scenex*(10)) + 2*r -1   # x-length of object (1m lost in wrapping of steel weights)
+    y_width = x+a+b+x2 -1                        # y-width of object  (1m lost in wrapping of steel weights)
+    z_height = 0.002                             # z-height of object (2mm thick tarp)
+
+    # Define object position 
+    position_x = -(mymodule.scenex*(2.5) + 4)   # x-position of object relative to center marker (here, negative to move object further to the left (west))
+    position_y = -(x2+b)                        # y-position of object relative to center marker (here, negative to move object further away (north))
+    position_z = z_height_concrete + z_height   # z-position of object relative to ground (here, positive to move object up from the ground )
+
+    # Create the custom rad object 
+    text='! genbox {} CenterPatch {} {} {}| xform -t {} {} {}'.format(material, x_length,y_width,z_height, position_x, position_y, position_z)
+    customObject = demo.makeCustomObject(name,text)
+    demo.appendtoScene(sceneObj1.radfiles, customObject, '!xform -rz 0')
