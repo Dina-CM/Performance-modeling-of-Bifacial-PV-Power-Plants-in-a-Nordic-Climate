@@ -20,9 +20,9 @@ from datetime import datetime, date
 import seaborn as sns
 import matplotlib.pyplot as plt
 
-
-# define testfolder and results folder for wanted simulation results as in "3D-model in bifacial_radiance"
-
+# ...
+# define testfolder, simulationname, metdata and results folder for wanted simulation results as in "3 - 3D-model in bifacial_radiance"
+# ...
 
 # generating cumulative sky
 #demo.genCumSky() # approach used to create cumulative sky file
