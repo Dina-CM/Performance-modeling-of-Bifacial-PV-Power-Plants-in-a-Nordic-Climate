@@ -1,2 +1,2 @@
 # Performance-modeling-of-Bifacial-PV-Power-Plants-in-a-Nordic-Climate
-This repository contains the most important scripts created as a part of the work performed for the master's thesis "Performance modeling of Bifacial PV Power Plants in a Nordic Climate" in Materials Chemistry and Energy Technology. 
+This repository contains the most important scripts created as a part of the work performed for the master's thesis "Performance modeling of Bifacial PV Power Plants in a Nordic Climate" in Materials Chemistry and Energy Technology. The master's thesis marks the completion of a five-year Master of Science degree in Chemical Engineering and Biotechnology at the Norwegian University of Science and Technology (NTNU)
