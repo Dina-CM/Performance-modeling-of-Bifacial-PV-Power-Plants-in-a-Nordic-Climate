@@ -4,7 +4,7 @@ This repository contains the most important scripts created as a part of the wor
 &copy; Dina Christensen Martinsen 
 
 # Repository overview: 
-*All scripts included are generalized for brevity. Modified version of these script, tailored to the specific simulation scenarios studied are used to create the results reported in the master's thesis.* 
+*All scripts included are generalized for brevity. Modified version of these script, tailored to each of the specific simulation scenarios studied, are used to create the results reported in the master's thesis.* 
 ##########################################################################
 
 - **Read from database data frames, adjust for timezone and filtering of data**<br>
