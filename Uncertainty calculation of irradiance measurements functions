@@ -1,0 +1,64 @@
+# This file includes the functions created to perform the uncertainty parameterization calculations for the 
+# pyranometer measurements and PVRD measurements collected from the site. The uncertainty parameterization 
+# was performed using *JCGM 100:2008 GUM  Evaluation of measurement data — Guide to the expression of uncertainty 
+# in measurement* in combination with parameter values provided in data sheets and calibration certificates for 
+# the measuring equipment. as described in the master's thesis.
+##########################################################################
+
+# function for uncertainty parameterization of pyranometer data
+def uncertainty_measured_SMP10(data, col_name):
+    S = 10.91  # [$\micro$V/(W/m²)] Sensitivity
+    zero_A = (7 / np.sqrt(3)) / 2  # [W/m²] Offset - Thermal radiation: rectangular distribution, one-sided
+    zero_B = 2 / np.sqrt(3)  # [W/m²] Offset - Temperature dependence: rectangular distribution, symmetric
+    dir_resp = 10 / np.sqrt(3)  # [W/m²] Directional response: rectangular distribution, symmetric
+    calibration = 1.39 / 3  # [%] Calibration uncertainty: normal distribution, symmetric
+    non_stability = 0.5 / np.sqrt(3)  # [%] Stability deviation per year: rectangular, symmetric
+    non_linearity = 0.2 / np.sqrt(3)  # [%] Non-linearity: rectangular, symmetric
+    tempe_resp = 1 / np.sqrt(3)  # [%] Temperature response: rectangular, symmetric
+    datalogger = 0
+
+    dir_resp_adjusted = (data[col_name]*dir_resp)/(1000*np.radians(ephem_data['apparent_elevation']))
+    zero_A_adjusted = zero_A/100 * data[col_name]
+    zero_B_adjusted = zero_B /100 * data[col_name]
+    datalogger_adjusted = datalogger/100 * data[col_name]
+
+    cs = np.abs(-(data[col_name]*S)/S**2)
+    u_s = np.sqrt((calibration/100 * S)**2 + (non_stability/100 * S)**2 + (non_linearity/100 * S)**2 + (tempe_resp/100 * S)**2)
+    cv = np.abs(1/S)
+    u_v = np.sqrt(datalogger_adjusted**2)
+    Uc1 = (cv*u_v)**2 + (cs*u_s)**2
+    Uc2 = np.sqrt(zero_A_adjusted**2 + zero_B_adjusted**2 + (dir_resp_adjusted )**2 )
+    Uc = np.sqrt(Uc1 + Uc2)
+    UE = 2*Uc # k = 2 coverage factor
+    data['UE_' + col_name] = UE
+    return data
+    
+# function for uncertainty parameterization of PVRD data
+def uncertainty_measured_PVRD(data, col_name):
+        S = 56.60
+        Offset = (2 / np.sqrt(3)) / 2 # [W/m²] Offset: rectangular distribution, symmetric
+        tempe_resp = 0.4/np.sqrt(3)  # [%] Temperature response: rectangular, symmetric
+        non_linearity = 0.1 / np.sqrt(3)  # [%] Non-linearity: rectangular, symmetric
+        non_stability = 0.5 / np.sqrt(3)  # [%] Stability deviation per year: rectangular, symmetric
+        calibration = 0 #1.25 / 3  # [%] Calibration uncertainty: normal distribution, symmetric
+        datalogger = 0
+
+        offsett_adjusted = Offset / 100 * data[col_name]
+        datalogger_adjusted = datalogger / 100 * data[col_name]
+
+        cs = np.abs(-(data[col_name] * S) / S ** 2)
+        u_s = np.sqrt(((non_linearity / 100 * S) ** 2 + (non_stability/100 * S)**2 + (tempe_resp / 100 * S) ** 2) + (calibration/100 * S)**2 )
+        cv = np.abs(1 / S)
+        u_v = np.sqrt(datalogger_adjusted ** 2)
+        Uc1 = (cv * u_v) ** 2 + (cs * u_s) ** 2
+        Uc2 = np.sqrt(offsett_adjusted ** 2 )
+        Uc = np.sqrt(Uc1 + Uc2)
+        UE = 2 * Uc + 5 + (0.025 * data[col_name])  # k = 2 
+        data['UE_' + col_name] = UE
+        return data 
+        
+# run for desired radiometer technology 
+data_uncertainty = uncertainty_measured_SMP10(data, 'ghi') # select column of df
+data_uncertainty = uncertainty_measured_PVRD(data, 'ghi')  # select column of df
+save_path = r'C:\Users\username\......'.replace('\\', '/') # add folder path
+data_uncertainty.to_pickle(save_path + '/uncertainty.pickle', protocol = 3)
