@@ -36,7 +36,7 @@ triangular_north_posts = True     # adds the northmost triangular supportive pos
 triangular_south_posts = True     # adds the southmost triangular supportive posts
 crossbars = True                  # adds the crossbars 
 
-tarp = False                      # adds tarp to the model
+tarp = True                       # adds tarp to the model
 tarp_color = 'black_tarp'         # defines the material of the tarp (defined by imported custom materials file) 
 tarp_name = 'tarp_black'          # defines tarp material .rad file name 
 
