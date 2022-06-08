@@ -1,10 +1,10 @@
 # Performance modeling of Bifacial PV Power Plants in a Nordic Climate
 This repository contains the most important scripts created as a part of the work performed for the master's thesis "Performance modeling of Bifacial PV Power Plants in a Nordic Climate" in Materials Chemistry and Energy Technology. The master's thesis marks the completion of a five-year Master of Science degree in Chemical Engineering and Biotechnology at the Norwegian University of Science and Technology (NTNU)
 
-######################################################################################################
+
 # Repository overview: 
 *All scripts included are generalized for brevity. Modified version of these script, tailored to the specific simulation scenarios studied are used to create the results reported in the master's thesis.* 
-######################################################################################################
+##########################################################################
 
 - **Read from database data frames, adjust for timezone and filtering of data**<br>
 This section contains the script created to read dataframes containing the extracted data from the database. The location specifics are defined and the initial filtering steps are applied to the collected data. The script also performs the decomposition step by the Disc decomposition model to generate DHI and DNI data. A custom EPW file is also created using this script to be used as input for bifcial_radiance by resampling the measured data to hourly timesteps and sorting the data to the requirements.
@@ -23,3 +23,5 @@ There are two approaches used for the sky, generation of a cumulative sky to rep
 - **Mismatch calculations**<br>
 This section contains the script created to perform the mismatch calculation in PVMismatch using the cell-level irradiance input from the ray-tracing procedure. The script evaluates the electrical mismatch that occurs between individual cells and includes the influence of bypass diode configuration and circuit design to form modules and then combines the modules into the complete PV system.
 Cell parameters for the double diode model are defined and provided by module number corresponding to measurement data from the testing performed at IFE. As the simulation runs, the individual cells are copied and altered according to the input of irradiance to model the power-voltage and current-voltage characteristics at cell to system level. Like for the ray-tracing procedure for single timestamp sky files, the mismatch analysis is performed for timeseries using a loop to analyze each full cell-level irradiance simulation result desired.  
+
+![Picture2](https://user-images.githubusercontent.com/102217024/172667340-25460ed7-92b5-4bf0-89f2-989c80b0ee5d.png)
