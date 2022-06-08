@@ -1,0 +1,328 @@
+# This file contains the script created to perform the mismatch calculation in PVMismatch 
+# using the cell-level irradiance input from the ray-tracing procedure. The script evaluates 
+# the electrical mismatch that occurs between individual cells and includes the influence of 
+# bypass diode configuration and circuit design to form modules and then combines the modules 
+# into the complete PV system. Cell parameters for the double diode model are defined and 
+# provided by module number corresponding to measurement data from the testing performed at IFE. 
+# As the simulation runs, the individual cells are copied and altered according to the input of 
+# irradiance to model the power-voltage and current-voltage characteristics at cell to system 
+# level. Like for the ray-tracing procedure for single timestamp sky files, the mismatch analysis 
+# is performed for timeseries using a loop to analyze each full cell-level irradiance simulation 
+# result desired.  
+##########################################################################
+
+from pvmismatch import *
+# allocating memory 
+stc_mod_list = []
+unshaded_module_list = []
+shaded_module_list =[]
+# cell and module parameters from characterization at IFE 
+Rs_list = [0.30232,0.29068,0.31422,0.29186,0.31272,0.30186,0.31566,0.30693,0.30283,0.31904]
+Rshunt_list = [375.924,196.481,354.013,485.662,372.341,313.769,277.501,285.039,128.976,404.512]
+Isc_list = [10.29,10.23,10.23,10.28,10.29,10.25,10.11,10.12,10.07,10.11]
+bifacialityfactor_1 = 0.65 # frameless (Moduletype 1)
+bifacialityfactor_2 = 0.57 # framed (Moduletype 2)
+
+
+def irrad_by_module(cellnum):
+    if cellnum == 1: 
+        i, lock_lower, lock_upper, res_tab, bifi = 0, 7, 13, all_results_1, bifacialityfactor_1
+    if cellnum == 2: 
+        i, lock_lower, lock_upper, res_tab, bifi = 2, 7, 13, all_results_1, bifacialityfactor_1
+    if cellnum == 3: 
+        i, lock_lower, lock_upper , res_tab, bifi= 4, 7, 13, all_results_1, bifacialityfactor_1
+    if cellnum == 4: 
+        i, lock_lower, lock_upper, res_tab, bifi = 0, 0, 6, all_results_1, bifacialityfactor_1
+    if cellnum == 5: 
+        i, lock_lower, lock_upper, res_tab, bifi = 2, 0, 6, all_results_1, bifacialityfactor_1
+    if cellnum == 6: 
+        i, lock_lower, lock_upper, res_tab, bifi = 4, 0, 6, all_results_1, bifacialityfactor_1
+    if cellnum == 7: 
+        i, lock_lower, lock_upper, res_tab, bifi = 0, 7, 13, all_results_2, bifacialityfactor_2
+    if cellnum == 8: 
+        i, lock_lower, lock_upper, res_tab, bifi = 2, 7, 13, all_results_2, bifacialityfactor_2
+    if cellnum == 9: 
+        i, lock_lower, lock_upper,  res_tab, bifi = 0, 0, 6, all_results_2, bifacialityfactor_2
+    if cellnum == 10: 
+        i, lock_lower, lock_upper, res_tab, bifi = 2, 0, 6, all_results_2, bifacialityfactor_2
+    
+    # combining the neighbouring 60-halfcells to one 120-half cell module
+    df = pd.DataFrame(columns= list(range(1,21))) # grouping cells by ladscape configuration
+    for j in range(10): # 60 westmost halfcells 
+        back = res_tab[i][j].Wm2Back
+        front = res_tab[i][j].Wm2Front
+        df[j+1] = (back*bifi) + front
+    df = df[::-1]
+
+    for j in range(10): # 60 eastmost halfcells 
+        back = res_tab[i+1][j].Wm2Back
+        front = res_tab[i+1][j].Wm2Front
+        df[j+1+10] = (back*bifi) + front
+    df = df[::-1]
+
+    cell = df.iloc[lock_lower:lock_upper,]
+    #display(cell) # printing the generated table of irradiance values to represent the 120-halfcell module 
+    
+    # saving results as pickle and csv 
+    save_path = r'C:\Users\dinac\OneDrive - NTNU\Dina - NTNU\Masteroppgave\Pycharm\pvmismatch'.replace('\\', '/')
+    name = str(cellnum)
+    #df.to_csv(path_or_buf=save_path+'/' + name +'.csv')
+    df.to_pickle(save_path+'/' + name +'.pickle')
+    return cell
+
+# ...
+# define testfolder, simulationname, metdata and results folder for wanted simulation results as in "3 - 3D-model in bifacial_radiance"
+# ...
+
+path = r'C:\Users\username\......'.replace('\\', '/') # add folder path to stored simulation results 
+df_analysis = pd.read_pickle(path + '/' + simulationname +'.pickle')
+
+
+# for each desired timestamp a (loop for timeseries)
+import random
+random_indexes = [random.randrange(1, len(demo.metdata.ghi), 1) for i in range(500)] #creating 500 random indexes
+for a in random_indexes:
+    demo.gendaylit(a)
+    print ("NEW FileLists: \n %s" % demo.getfilelist())
+    octfile = demo.makeOct(demo.getfilelist())  # makeOct combines all ground, sky and object files into a .oct file
+
+    # Select name of analysis results for frameless modules
+    Objname = "_Frameless_module_"
+    analysis = AnalysisObj(octfile, demo.basename) 
+
+    # Create the sampling points for irradiance analysis 
+    rowWanted = 1 # only one row in this model
+    sensorsx = 10 # 10 cells in x-direction          
+    spacingbetweensamples = module_width/sensorsx # create one sampling point per cell
+    for i in range(6): # map the 6 modules of Moduletype 1 
+        modWanted = i +1 
+        startgroundsample= -1.98848 + i*mymodule.scenex - 0.04 # move to westmost corner of each module 
+
+        for j in range (10): # map the 10 cells along x-directions   
+            frontscan, backscan = analysis.moduleAnalysis(sceneObj2, modWanted = modWanted, rowWanted = rowWanted, sensorsy=sensorsy)
+            frontscan['xstart'] = startgroundsample + j*spacingbetweensamples   
+            backscan['xstart'] = startgroundsample + j*spacingbetweensamples   
+            print('Scanning x-position: ' + str(startgroundsample + j*spacingbetweensamples))
+            analysis.analysis(octfile, simulationname+Objname+'_module'+str(i+1)+'_cell'+str(j+1), frontscan, backscan)  # compare the back vs front irradiance  
+            print('Irradiance back to front ratio: %0.3f' %( np.mean(analysis.Wm2Back) / np.mean(analysis.Wm2Front)) )
+
+    # Select name of analysis results for framed modules 
+    Objname = "_Framed_module_"
+    analysis = AnalysisObj(octfile, demo.basename) 
+
+    # Allocate memory for storing results
+    res_list= []*4  # 4 is the number of rows (modules)
+
+
+    # Create the sampling points for irradiance analysis 
+    rowWanted = 1 # only one row in this model
+    sensorsx = 10 # 10 cells in x-direction          
+    spacingbetweensamples = module_width/sensorsx # create one sampling point per cell
+    for b in range(4): # map the 4 modules of Moduletype 2 
+        modWanted = b +1 
+        startgroundsample= 3.15211 + b*mymodule.scenex - 0.04 # move to westmost corner of each module 
+
+        for j in range (10): # map the 10 cells along x-directions   
+            frontscan, backscan = analysis.moduleAnalysis(sceneObj2, modWanted = modWanted, rowWanted = rowWanted, sensorsy=sensorsy)
+            frontscan['xstart'] = startgroundsample + j*spacingbetweensamples   
+            backscan['xstart'] = startgroundsample + j*spacingbetweensamples   
+            print('Scanning x-position: ' + str(startgroundsample + j*spacingbetweensamples))
+            analysis.analysis(octfile, simulationname+Objname+'_module'+str(b+1)+'_cell'+str(j+1), frontscan, backscan)  # compare the back vs front irradiance  
+            print('Irradiance back to front ratio: %0.3f' %( np.mean(analysis.Wm2Back) / np.mean(analysis.Wm2Front)) )    
+
+
+
+    Objname == "_Framed_module_"
+    all_results_2 = []
+    for c in range(4):
+        cleaned_results = [0]*10
+        for j in range(10):
+            cleaned_results[j] = load.cleanResult(load.read1Result('results\irr_' + simulationname+Objname+'_module'+str(c+1)+'_cell'+str(j+1) + '.csv')) 
+        all_results_2.append(cleaned_results)
+
+    Objname = "_Frameless_module_"
+    all_results_1 = []
+    for d in range(6):
+        cleaned_results = [0]*10
+        for j in range(10):
+            cleaned_results[j] = load.cleanResult(load.read1Result('results\irr_' + simulationname+Objname+'_module'+str(d+1)+'_cell'+str(j+1) + '.csv')) 
+        all_results_1.append(cleaned_results)
+
+    #print(all_results_1[1][2].Wm2Back)
+    #print(all_results_1[1][2].Wm2Front)
+
+
+
+    # Printing results for frameless modules (Moduletype 1)       
+    print('\033[1m' + 'Bifacial gain in terms of irradaince for frameless modules:' + '\033[0m') 
+    gain_list = []
+    for i in range(6):
+        sum_back= sum(np.nanmean(all_results_1[i][j].Wm2Back) for j in range(10))
+        sum_front = sum(np.nanmean(all_results_1[i][j].Wm2Front) for j in range(10))
+        print('Frameless module',str(i+1),': %0.2f ' %(( sum_back * bifacialityfactor_1 / sum_front)*100),'%' )
+        gain_list.append((sum_back * bifacialityfactor_1 / sum_front)*100)
+
+    sum_back = sum(np.nanmean(sum(np.nanmean(all_results_1[i][j].Wm2Back) for j in range(10))) for i in range(6))
+    sum_front = sum(np.nanmean(sum(np.nanmean(all_results_1[i][j].Wm2Front) for j in range(10))) for i in range(6))
+    print('Average bifacial gain for the 6 frameless modules: %0.2f ' %(( sum_back * bifacialityfactor_1 / sum_front)*100 ),'%')
+    BG_frameless = (sum_back * bifacialityfactor_1 / sum_front)*100
+    sum_back_frameless = sum_back
+    sum_front_frameless = sum_front
+
+
+    # Printing results for framed modules (Moduletype 2)
+    print('')
+    print('\033[1m' + 'Bifacial gain in terms of irradaince for framed modules:' + '\033[0m')
+    for i in range(4):
+        sum_back= sum(np.nanmean(all_results_2[i][j].Wm2Back) for j in range(10))
+        sum_front = sum(np.nanmean(all_results_2[i][j].Wm2Front) for j in range(10))
+        print('Framed module',str(i+1),': %0.2f ' %(( sum_back * bifacialityfactor_2 / sum_front)*100),'%' )
+        gain_list.append((sum_back * bifacialityfactor_2 / sum_front)*100)
+
+    sum_back = sum(np.nanmean(sum(np.nanmean(all_results_2[i][j].Wm2Back) for j in range(10))) for i in range(4))
+    sum_front = sum(np.nanmean(sum(np.nanmean(all_results_2[i][j].Wm2Front) for j in range(10))) for i in range(4))
+    print('Average bifacial gain for the 4 framed modules: %0.2f ' %(( sum_back * bifacialityfactor_2 / sum_front)*100 ),'%')
+    BG_framed = (sum_back * bifacialityfactor_2 / sum_front)*100
+    sum_back_framed = sum_back
+    sum_front_framed = sum_front
+
+    gain_array = np.array(gain_list)
+    Average_array = gain_array.mean()
+    print('Average bifacial gain across the array: %0.2f ' %(( Average_array) ),'%')
+
+    irrad_list = []
+    keys = []
+    for i in range(10):
+        irrad_list.append(only_rear_irrad_by_module(i+1))
+        keys.append(i+1)
+    df = pd.concat(irrad_list,  keys=keys)
+
+    save_path = r'C:\Users\username\......'.replace('\\', '/') # add folder path
+    name = simulationname
+    df.to_pickle(save_path+'/' + name +'.pickle')
+
+    # mismatch analysis for all 10 modules 
+    for i in range(10):
+        i+=1
+        modulenumber = i
+        # Cell parameters:
+        cell_area = xcell_framed*ycell_framed        # cell area [m^2] (per half-cell)
+        Isc0_T0 = Isc_list[i-1]/2 # 10.09904/2       # check!!(divide by two due to half-cut cells??)  # short circuit current at ref temp [A] (IFE caracterization)
+        Eg = 1.1                                     # band gap cSi [eV]
+        alpha_Isc = 0.0004                           # short circuit current temp coeff [1/K] (Datasheet Talesun/meteocontrol)
+        Tcell = 298.15                               # cell temperature [K]
+        Ee = 1.0                                     # incident effective irradiance [suns]
+        Ee_irr = 1000                                # incident effective irradiance [W/m^2]
+        Rs=  Rs_list[i-1]/60  #  0.32/60             # series resistance [ohms]  (using flash test data from modules)
+        Rsh = Rshunt_list[i-1]/60    #  300/60       # shunt resistance [ohms]  (using flash test data from modules)
+        Isat1_T0 = 400*(10**(-15))*cell_area*10000   # first saturation diode current at ref temp [A] (estimated)
+        Isat2_T0 = 6.7*(10**(-12))*cell_area*10000   # second saturation diode current [A] (estiamted)
+        v_bypass = -0.3                              # [V] trigger voltage of bypass diode 
+
+        # Defining cells 
+        cell_1 = pvcell.PVcell(Rs=Rs, Rsh=Rsh, Isat1_T0= Isat1_T0, Isat2_T0=Isat2_T0, Isc0_T0= Isc0_T0, Eg=Eg, alpha_Isc=alpha_Isc)
+
+        # Generating cell position-pattern according to diode-scheme above
+        # generates a list of lists. Outermost list is a list of substrings in parallel with a bypass diode and in series with each other. The substring is a list of columns in that substring. Inside the column are the actual cells in each row. Each cell has a ‘crosstie’ key and an index.
+        halfcell120_bypass3_pattern= pvmodule.crosstied_cellpos_pat([20, 20, 20], 2, partial=True) # True - no cross-tiling
+
+        #Defining moule with positions and cell defined above 
+        STC_halfcell120_bypass3 = pvmodule.PVmodule(
+            cell_pos = halfcell120_bypass3_pattern, 
+            pvcells=cell_1,
+            Vbypass=v_bypass, 
+            cellArea=cell_area)
+
+        unshaded_halfcell120_bypass3 = pvmodule.PVmodule(
+            cell_pos=halfcell120_bypass3_pattern, 
+            pvcells=cell_1,
+            Vbypass=v_bypass, 
+            cellArea=cell_area)
+
+        shaded_halfcell120_bypass3 = pvmodule.PVmodule(
+            cell_pos=halfcell120_bypass3_pattern, 
+            pvcells=cell_1,
+            Vbypass=v_bypass, 
+            cellArea=cell_area)
+
+        # Defining irradince for unshaded and shaded scenarios in effectve irradiance [suns]
+        # STC:
+        G = np.ones((40,3)) # setting all irradiance values to 1 sun 
+        STC_halfcell120_bypass3.setSuns(G.T.flatten())
+        stc_mod_list.append(STC_halfcell120_bypass3)
+
+        # Unshaded:
+        irrad = irrad_by_module(modulenumber)
+        G_unshaded = np.ones((40,3))
+        G_unshaded[0:40,0:3]  = irrad.max().max()/1000
+        unshaded_halfcell120_bypass3.setSuns(G_unshaded.T.flatten())
+        unshaded_module_list.append(unshaded_halfcell120_bypass3) 
+
+        # Shaded: 
+        G = np.ones((40,3))
+        G_shaded = (irrad_by_module(modulenumber))/1000
+        def extractDigits(lst):
+            return [[el] for el in lst]
+
+        G[0:10,0:1]  = extractDigits(G_shaded[0:2].values.tolist()[0][0:10]) # shading cells indexed 1-20
+        G[10:20,0:1] = extractDigits(G_shaded[0:2].values.tolist()[1][0:10]) # shading cells indexed 1-20
+        G[0:10,1:2]  = extractDigits(G_shaded[2:4].values.tolist()[0][0:10]) # shading cells indexed 21-40
+        G[10:20,1:2] = extractDigits(G_shaded[2:4].values.tolist()[1][0:10]) # shading cells indexed 21-40
+        G[0:10,2:3]  = extractDigits(G_shaded[4:6].values.tolist()[0][0:10]) # shading cells indexed 41-60
+        G[10:20,2:3] = extractDigits(G_shaded[4:6].values.tolist()[1][0:10]) # shading cells indexed 41-60
+
+        G[20:30,0:1] = extractDigits(G_shaded[0:2].values.tolist()[0][10:20]) # shading cells indexed 61-80  
+        G[30:40,0:1] = extractDigits(G_shaded[0:2].values.tolist()[1][10:20]) # shading cells indexed 61-80
+        G[20:30,1:2] = extractDigits(G_shaded[2:4].values.tolist()[0][10:20]) # shading cells indexed 81-100  
+        G[30:40,1:2] = extractDigits(G_shaded[2:4].values.tolist()[1][10:20]) # shading cells indexed 81-100
+        G[20:30,2:3] = extractDigits(G_shaded[4:6].values.tolist()[0][10:20]) # shading cells indexed 101-120  
+        G[30:40,2:3] = extractDigits(G_shaded[4:6].values.tolist()[1][10:20]) # shading cells indexed 101-120
+        shaded_halfcell120_bypass3.setSuns(G.T.flatten())
+        shaded_module_list.append(shaded_halfcell120_bypass3)
+
+    pvsys_stc = pvsystem.PVsystem(numberStrs=1, numberMods=10, pvmods= stc_mod_list)
+    pvsys_stc.plotSys()
+    f = plt.gcf()
+    plt.tight_layout()
+    Pmp_stc = pvsys_stc.Pmp
+
+    pvsys_unshaded = pvsystem.PVsystem(numberStrs=1, numberMods=10, pvmods= unshaded_module_list)
+    pvsys_unshaded.plotSys()
+    plt.tight_layout()
+    Pmp_unshaded =pvsys_unshaded.Pmp
+
+    pvsys_shaded = pvsystem.PVsystem(numberStrs=1, numberMods=10, pvmods= shaded_module_list)
+    pvsys_shaded.plotSys()
+    plt.tight_layout()
+    Pmp_shaded = pvsys_shaded.Pmp
+    M = round(((pvsys_unshaded.Pmp-pvsys_shaded.Pmp)/pvsys_unshaded.Pmp)*100,3)
+    df = {'Pmp_stc [W]': Pmp_stc, 'Pmp_unshaded [W]':Pmp_unshaded, 'Pmp_shaded [W]': Pmp_shaded , 'BG_array': Average_array, 'M [%]': M, 'timestamps': metdata.datetime[a]}
+    df_analysis = df_analysis.append(df, ignore_index = True)
+
+    #plot I-V and P-V curves 
+    f, ax = plt.subplots(2, 1, figsize=(10, 7), sharex = True)
+    ax[0].plot(pvsys_unshaded.Vsys, pvsys_unshaded.Isys, '', color='steelblue', label='$P_{cells}$')
+    ax[0].plot(pvsys_shaded.Vsys, pvsys_shaded.Isys, '--', color='firebrick', label='$P_{array}$')
+    ax[1].plot(pvsys_shaded.Vsys, pvsys_shaded.Psys, '--', color='firebrick', label='$P_{array}$')
+    ax[1].plot(pvsys_unshaded.Vsys, pvsys_unshaded.Psys, '', color='steelblue', label='$P_{cells}$')
+
+    ax[0].set_xlim(0, )
+    ax[0].set_ylim(0, )
+    ax[1].set_ylim(0, )
+    ax[1].set_xlim(0, )
+    #ax[0].set_xlabel('Voltage [V]')
+    ax[1].set_xlabel('Voltage [V]')
+    ax[0].set_ylabel('Current [A]')
+    ax[1].set_ylabel(' Power [kW]')
+    ax[0].legend()
+    ax[1].legend()
+    ax[0].spines['right'].set_visible(False)
+    ax[0].spines['top'].set_visible(False)
+    ax[0].spines['left'].set_visible(False)  
+    ax[1].spines['right'].set_visible(False)
+    ax[1].spines['top'].set_visible(False)
+    ax[1].spines['left'].set_visible(False)  
+    
+save_path = r'C:\Users\username\......'.replace('\\', '/') # add folder path to store df
+df_analysis.to_pickle(path=save_path + '/' + simulationname +'.pickle', protocol=3)  # , header=False, index=False)
+   
