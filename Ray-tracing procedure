@@ -1,0 +1,346 @@
+# This file contains the script created to perform the full cell-level ray-tracing 
+# procedure in bifacial_radiance. The script generates a sky or the model, defines 
+# sensor positions, performs the irradiance analysis and stores the analysis results. 
+# There are two approaches used for the sky, generation of a cumulative sky to represent 
+# the entire year, or a sky created to represent a single timestamp. For the single 
+# timestamp sky creation, a loop is used to simulate several hourly timestamps. The 
+# example below illustrates the procedure for one single timestamp, including bifacial 
+# gain calculations across the array and the creation of irradiance maps.
+##########################################################################
+
+import os
+from bifacial_radiance import *   
+import numpy as np
+import pandas as pd
+import pprint
+from pathlib import Path
+import ipywidgets as widgets
+from ipywidgets import interact, interactive, fixed, interact_manual, Layout
+from datetime import datetime, date 
+import seaborn as sns
+import matplotlib.pyplot as plt
+
+
+# define testfolder and results folder for wanted simulation results as in "3D-model in bifacial_radiance"
+
+
+# generating cumulative sky
+#demo.genCumSky() # approach used to create cumulative sky file
+
+# generate skyfile for spesific timestamp 
+demo.gendaylit(a)  #loop for timeseries 
+
+
+print ("NEW FileLists: \n %s" % demo.getfilelist())
+octfile = demo.makeOct(demo.getfilelist())  # makeOct combines all ground, sky and object files into a .oct file
+
+# Analysing Moduletype 1
+Objname = "_Frameless_module_"
+analysis = AnalysisObj(octfile, demo.basename) 
+
+# Create the sampling points for irradiance analysis 
+rowWanted = 1 # only one row in this model
+sensorsx = 10 # 10 cells in x-direction          
+spacingbetweensamples = module_width/sensorsx # create one sampling point per cell
+for i in range(6): # map the 6 modules of Moduletype 1 
+    modWanted = i +1 
+    startgroundsample= -1.98848 + i*mymodule.scenex - 0.04 # move to westmost corner of each module 
+
+    for j in range (10): # map the 10 cells along x-directions   
+        frontscan, backscan = analysis.moduleAnalysis(sceneObj2, modWanted = modWanted, rowWanted = rowWanted, sensorsy=sensorsy)
+        frontscan['xstart'] = startgroundsample + j*spacingbetweensamples   
+        backscan['xstart'] = startgroundsample + j*spacingbetweensamples   
+        print('Scanning x-position: ' + str(startgroundsample + j*spacingbetweensamples))
+        analysis.analysis(octfile, simulationname+Objname+'_module'+str(i+1)+'_cell'+str(j+1), frontscan, backscan)  # compare the back vs front irradiance  
+        print('Irradiance back to front ratio: %0.3f' %( np.mean(analysis.Wm2Back) / np.mean(analysis.Wm2Front)) )
+
+
+# Analysing Moduletype 2
+Objname = "_Framed_module_"
+analysis = AnalysisObj(octfile, demo.basename) 
+
+# Allocate memory for storing results
+res_list= []*4  # 4 is the number of rows (modules)
+
+
+# Create the sampling points for irradiance analysis 
+rowWanted = 1 # only one row in this model
+sensorsx = 10 # 10 cells in x-direction          
+spacingbetweensamples = module_width/sensorsx # create one sampling point per cell
+for i in range(4): # map the 4 modules of Moduletype 2 
+    modWanted = i +1 
+    startgroundsample= 3.15211 + i*mymodule.scenex - 0.04 # move to westmost corner of each module 
+
+    for j in range (10): # map the 10 cells along x-directions   
+        frontscan, backscan = analysis.moduleAnalysis(sceneObj2, modWanted = modWanted, rowWanted = rowWanted, sensorsy=sensorsy)
+        frontscan['xstart'] = startgroundsample + j*spacingbetweensamples   
+        backscan['xstart'] = startgroundsample + j*spacingbetweensamples   
+        print('Scanning x-position: ' + str(startgroundsample + j*spacingbetweensamples))
+        analysis.analysis(octfile, simulationname+Objname+'_module'+str(i+1)+'_cell'+str(j+1), frontscan, backscan)  # compare the back vs front irradiance  
+        print('Irradiance back to front ratio: %0.3f' %( np.mean(analysis.Wm2Back) / np.mean(analysis.Wm2Front)) )
+
+# Displaying the cleaned results from each module by interactive buttons  
+# Adding widget for module choices: 
+widg_mod_choice = widgets.ToggleButtons(
+    options=['Framed module', 'Frameless module'],
+    description='Choose module type to display results from:',
+    disabled=False,
+    button_style='', # 'success', 'info', 'warning', 'danger' or ''
+    tooltip='Description',
+    continuous_update=True,
+    style = {'description_width': 'initial', 'button_width': 'initial'} )
+
+widg_modtype_1 = widgets.ToggleButtons(
+    options=['Mod 1', 'Mod 2', 'Mod 3', 'Mod 4', 'Mod 5', 'Mod 6'],
+    description='Choose module to display results from: (note that there arre only 4 modules of Framed type)',
+    disabled=False,
+    button_style='', # 'success', 'info', 'warning', 'danger' or ''
+    tooltip='Description',
+    continuous_update=True,
+    style = {'description_width': 'initial', 'button_width': 'initial'} )
+
+widg_modtype_2 = widgets.ToggleButtons(
+    options=['Mod 1', 'Mod 2', 'Mod 3', 'Mod 4'],
+    description='Choose module to display results from: (note that there arre only 4 modules of Framed type)',
+    disabled=False,
+    button_style='', # 'success', 'info', 'warning', 'danger' or ''
+    tooltip='Description',
+    continuous_update=True,
+    style = {'description_width': 'initial', 'button_width': 'initial'} )
+
+widg_cell_x = widgets.ToggleButtons(
+    options=['1 ', '2 ', '3 ', '4 ','5 ','6 ','7 ','8 ','9 ','10'],
+    description='Choose cell number in x-direction to display results from:',
+    disabled=False,
+    button_style='', # 'success', 'info', 'warning', 'danger' or ''
+    tooltip='Description',
+    continuous_update=True,
+    style = {'description_width': 'initial', 'button_width': 'initial'} )
+
+
+def display_mod_results(choice_3, choice, choice_2):
+    if choice_3 == 'Framed module':
+        Objname = "_Framed_module_"
+        res = load.read1Result('results\irr_' + simulationname+Objname+'_module'+str(int(choice[-1]))+'_cell'+str(int(choice_2)) + '.csv')
+        cleaned = load.cleanResult(res)
+        result = cleaned 
+    if choice_3 == 'Frameless module':
+        Objname = "_Frameless_module_"
+        res = load.read1Result('results\irr_' + simulationname+Objname+'_module'+str(int(choice[-1]))+'_cell'+str(int(choice_2)) + '.csv')
+        cleaned = load.cleanResult(res)
+        result = cleaned 
+    return result
+
+def choose_module_type(choice):
+    if choice == 'Framed module':
+        interact(display_mod_results, choice_3 = 'Framed module', choice = widg_modtype_2 , choice_2 = widg_cell_x)
+    if choice == 'Frameless module':
+        interact(display_mod_results, choice_3 = 'Frameless module', choice = widg_modtype_1 , choice_2 = widg_cell_x)
+
+interact(choose_module_type, choice = widg_mod_choice )
+
+# printing irradiance gain results across the array  
+bifacialityfactor_1 = 0.65 # frameless (Moduletype 1)
+bifacialityfactor_2 = 0.57 # framed (Moduletype 2)
+
+# Note, the main difference in these results are due to the difference in bifaciality facto, not the frame yet (09.03.2022)
+Objname = "_Framed_module_"
+all_results_2 = []
+for i in range(4):
+    cleaned_results = [0]*10
+    for j in range(10):
+        cleaned_results[j] = load.cleanResult(load.read1Result('results\irr_' + simulationname+Objname+'_module'+str(i+1)+'_cell'+str(j+1) + '.csv')) 
+    all_results_2.append(cleaned_results)
+
+Objname = "_Frameless_module_"
+all_results_1 = []
+for i in range(6):
+    cleaned_results = [0]*10
+    for j in range(10):
+        cleaned_results[j] = load.cleanResult(load.read1Result('results\irr_' + simulationname+Objname+'_module'+str(i+1)+'_cell'+str(j+1) + '.csv')) 
+    all_results_1.append(cleaned_results)
+
+#print(all_results_1[1][2].Wm2Back)
+#print(all_results_1[1][2].Wm2Front)
+
+
+
+# Printing results for frameless modules (Moduletype 1)       
+print('\033[1m' + 'Bifacial gain in terms of irradaince for frameless modules:' + '\033[0m') 
+for i in range(6):
+    sum_back= sum(np.nanmean(all_results_1[i][j].Wm2Back) for j in range(10))
+    sum_front = sum(np.nanmean(all_results_1[i][j].Wm2Front) for j in range(10))
+    print('Frameless module',str(i+1),': %0.2f ' %(( sum_back * bifacialityfactor_1 / sum_front)*100),'%' )
+    
+sum_back = sum(np.nanmean(sum(np.nanmean(all_results_1[i][j].Wm2Back) for j in range(10))) for i in range(6))
+sum_front = sum(np.nanmean(sum(np.nanmean(all_results_1[i][j].Wm2Front) for j in range(10))) for i in range(6))
+print('Average bifacial gain for the 6 frameless modules: %0.2f ' %(( sum_back * bifacialityfactor_1 / sum_front)*100 ),'%')
+BG_frameless = (sum_back * bifacialityfactor_1 / sum_front)*100
+sum_back_frameless = sum_back
+sum_front_frameless = sum_front
+
+
+# Printing results for framed modules (Moduletype 2)
+print('')
+print('\033[1m' + 'Bifacial gain in terms of irradaince for framed modules:' + '\033[0m')
+for i in range(4):
+    sum_back= sum(np.nanmean(all_results_2[i][j].Wm2Back) for j in range(10))
+    sum_front = sum(np.nanmean(all_results_2[i][j].Wm2Front) for j in range(10))
+    print('Framed module',str(i+1),': %0.2f ' %(( sum_back * bifacialityfactor_2 / sum_front)*100),'%' )
+    
+sum_back = sum(np.nanmean(sum(np.nanmean(all_results_2[i][j].Wm2Back) for j in range(10))) for i in range(4))
+sum_front = sum(np.nanmean(sum(np.nanmean(all_results_2[i][j].Wm2Front) for j in range(10))) for i in range(4))
+print('Average bifacial gain for the 4 framed modules: %0.2f ' %(( sum_back * bifacialityfactor_2 / sum_front)*100 ),'%')
+BG_framed = (sum_back * bifacialityfactor_2 / sum_front)*100
+sum_back_framed = sum_back
+sum_front_framed = sum_front
+
+
+
+# create irradiance maps for moduletype 1
+mods_front_lower = []
+mods_front_upper = []
+mods_back_lower = []
+mods_back_upper = []
+
+for i in range(6):
+    cells_x = np.arange(1, 11, 1)
+    cells_y_lower = np.arange(0,6,1)
+    cells_y_upper = np.arange(7,13,1)
+    front_irrad_mod_lower = pd.DataFrame(index = cells_y_lower, columns = cells_x)
+    front_irrad_mod_upper = pd.DataFrame(index = cells_y_upper, columns = cells_x)
+    back_irrad_mod_lower = pd.DataFrame(index = cells_y_lower, columns = cells_x)
+    back_irrad_mod_upper = pd.DataFrame(index = cells_y_upper, columns = cells_x)
+    for j in range(10):
+        front_irrad_mod_lower[cells_x[j]] = all_results_1[i][j].Wm2Front
+        front_irrad_mod_upper[cells_x[j]] = all_results_1[i][j].Wm2Front
+        back_irrad_mod_lower[cells_x[j]] = all_results_1[i][j].Wm2Back
+        back_irrad_mod_upper[cells_x[j]] = all_results_1[i][j].Wm2Back
+    mods_front_lower.append(front_irrad_mod_lower[::-1])    
+    mods_front_upper.append(front_irrad_mod_upper[::-1])
+    mods_back_lower.append(back_irrad_mod_lower[::-1])    
+    mods_back_upper.append(back_irrad_mod_upper[::-1])
+    
+
+
+def plot_my_heatmap(irrad_dfs_mods, lower_lim, upper_lim):
+    f,(ax1,ax2,ax3,ax4,ax5,ax6, axcb) = plt.subplots(1,7,
+                gridspec_kw={'width_ratios':[1,1,1,1,1,1,0.08]},figsize=(20, 5) )
+    ax1.get_shared_y_axes().join(ax2,ax3,ax4,ax5)
+    g1 = sns.heatmap(irrad_dfs_mods[0],cmap="YlGnBu",cbar=False,ax=ax1, vmin=lower_lim, vmax=upper_lim)  #cmap="YlGnBu" cmap='coolwarm' cmap='hot' cmap = 'cividis'
+    g1.set_ylabel('')
+    g1.set_xlabel('')
+
+    g2 = sns.heatmap(irrad_dfs_mods[1],cmap="YlGnBu",cbar=False,ax=ax2,  vmin=lower_lim, vmax=upper_lim)
+    g2.set_ylabel('')
+    g2.set_xlabel('')
+    g2.set_yticks([])
+
+    g3 = sns.heatmap(irrad_dfs_mods[2],cmap="YlGnBu",cbar=False,ax=ax3,  vmin=lower_lim, vmax=upper_lim)
+    g3.set_ylabel('')
+    g3.set_xlabel('')
+    g3.set_yticks([])
+
+    g4 = sns.heatmap(irrad_dfs_mods[3],cmap="YlGnBu",cbar=False,ax=ax4,  vmin=lower_lim, vmax=upper_lim)
+    g4.set_ylabel('')
+    g4.set_xlabel('')
+    g4.set_yticks([])
+    
+    g5 = sns.heatmap(irrad_dfs_mods[4],cmap="YlGnBu",cbar=False,ax=ax5,  vmin=lower_lim, vmax=upper_lim)
+    g5.set_ylabel('')
+    g5.set_xlabel('')
+    g5.set_yticks([])
+
+    g6 = sns.heatmap(irrad_dfs_mods[5],cmap="YlGnBu",ax=ax6, cbar_ax=axcb,  vmin=lower_lim, vmax=upper_lim)
+    g6.set_ylabel('')
+    g6.set_xlabel('')
+    g6.set_yticks([])
+
+    # may be needed to rotate the ticklabels correctly:
+    for ax in [g1,g2,g3,g4,g5]:
+        tl = ax.get_xticklabels()
+        ax.set_xticklabels(tl, rotation=0)
+        tly = ax.get_yticklabels()
+        ax.set_yticklabels(tly, rotation=0)
+    
+    plt.show()
+# display irradiance maps using selected scale-bar values     
+print('Frontside irradiation frameless modules  (<- West   East ->)')
+plot_my_heatmap(mods_front_upper, 770, 820)    
+plot_my_heatmap(mods_front_lower,780, 820)
+
+print('')
+print('Backside irradiation frameless moules   (<- West   East ->)')
+plot_my_heatmap(mods_back_upper, 10, 130)    
+plot_my_heatmap(mods_back_lower, 10, 130)
+
+
+
+# create irradiance maps for moduletype 2 
+mods_front_lower = []
+mods_front_upper = []
+mods_back_lower = []
+mods_back_upper = []
+
+for i in range(4):
+    cells_x = np.arange(1, 11, 1)
+    cells_y_lower = np.arange(0,6,1)
+    cells_y_upper = np.arange(7,13,1)
+    front_irrad_mod_lower = pd.DataFrame(index = cells_y_lower, columns = cells_x)
+    front_irrad_mod_upper = pd.DataFrame(index = cells_y_upper, columns = cells_x)
+    back_irrad_mod_lower = pd.DataFrame(index = cells_y_lower, columns = cells_x)
+    back_irrad_mod_upper = pd.DataFrame(index = cells_y_upper, columns = cells_x)
+    for j in range(10):
+        front_irrad_mod_lower[cells_x[j]] = all_results_2[i][j].Wm2Front
+        front_irrad_mod_upper[cells_x[j]] = all_results_2[i][j].Wm2Front
+        back_irrad_mod_lower[cells_x[j]] = all_results_2[i][j].Wm2Back
+        back_irrad_mod_upper[cells_x[j]] = all_results_2[i][j].Wm2Back
+    mods_front_lower.append(front_irrad_mod_lower[::-1])    
+    mods_front_upper.append(front_irrad_mod_upper[::-1])
+    mods_back_lower.append(back_irrad_mod_lower[::-1])    
+    mods_back_upper.append(back_irrad_mod_upper[::-1])
+    
+
+
+def plot_my_heatmap(irrad_dfs_mods, lower_lim, upper_lim):
+    f,(ax1,ax2,ax3,ax4, axcb) = plt.subplots(1,5,
+                gridspec_kw={'width_ratios':[1,1,1,1,0.08]},figsize=(20, 5) )
+    ax1.get_shared_y_axes().join(ax2,ax3)
+    g1 = sns.heatmap(irrad_dfs_mods[0],cmap="YlGnBu",cbar=False,ax=ax1, vmin=lower_lim, vmax=upper_lim)  #cmap="YlGnBu" cmap='coolwarm' cmap='hot' cmap = 'cividis'
+    g1.set_ylabel('')
+    g1.set_xlabel('')
+
+    g2 = sns.heatmap(irrad_dfs_mods[1],cmap="YlGnBu",cbar=False,ax=ax2,  vmin=lower_lim, vmax=upper_lim)
+    g2.set_ylabel('')
+    g2.set_xlabel('')
+    g2.set_yticks([])
+
+    g3 = sns.heatmap(irrad_dfs_mods[2],cmap="YlGnBu",cbar=False,ax=ax3,  vmin=lower_lim, vmax=upper_lim)
+    g3.set_ylabel('')
+    g3.set_xlabel('')
+    g3.set_yticks([])
+
+
+    g4 = sns.heatmap(irrad_dfs_mods[3],cmap="YlGnBu",ax=ax4, cbar_ax=axcb,  vmin=lower_lim, vmax=upper_lim)
+    g4.set_ylabel('')
+    g4.set_xlabel('')
+    g4.set_yticks([])
+
+    # may be needed to rotate the ticklabels correctly:
+    for ax in [g1,g2,g3]:
+        tl = ax.get_xticklabels()
+        ax.set_xticklabels(tl, rotation=0)
+        tly = ax.get_yticklabels()
+        ax.set_yticklabels(tly, rotation=0)
+    
+    plt.show()
+    
+# display irradiance maps using selected scale-bar values 
+print('Frontside irradiation framed modules  (<- West   East ->)')
+plot_my_heatmap(mods_front_upper, 770, 820)    
+plot_my_heatmap(mods_front_lower,780, 820)
+
+print('')
+print('Backside irradiation framed moules   (<- West   East ->)')
+plot_my_heatmap(mods_back_upper, 10, 130)    
+plot_my_heatmap(mods_back_lower, 10, 130)
