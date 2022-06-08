@@ -1,3 +1,10 @@
+# This section contains the script created to read dataframes containing the extracted data from the database. 
+# The location specifics are defined and the initial filtering steps are applied to the collected data. 
+# The script also performs the decomposition step by the Disc decomposition model to generate DHI and DNI data. 
+# A custom EPW file is also created using this script to be used as input for bifcial_radiance by resampling the 
+# measured data to hourly timesteps and sorting the data to the requirements.
+#################################################################################
+
 import numpy as np
 import pandas as pd
 import pvlib
@@ -7,7 +14,6 @@ from os import listdir
 path = r'C:\Users\username\......'.replace('\\', '/') # add folder path
 data = pd.read_pickle(path + '/combined_dfs.pickle')
 
-#################################################################################
 # Generate site, time and solar position data
 site = pvlib.location.Location(lat, lon, tz, altitude, 'IFE')
 times = data.index
