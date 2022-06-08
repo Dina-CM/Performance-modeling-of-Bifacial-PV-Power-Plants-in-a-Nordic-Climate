@@ -1,0 +1,111 @@
+import numpy as np
+import pandas as pd
+import pvlib
+from os import listdir
+
+# read a df with all combined data from the PV power plant
+path = r'C:\Users\username\......'.replace('\\', '/') # add folder path
+data = pd.read_pickle(path + '/combined_dfs.pickle')
+
+#################################################################################
+# Generate site, time and solar position data
+site = pvlib.location.Location(lat, lon, tz, altitude, 'IFE')
+times = data.index
+ephem_data = site.get_solarposition(data.index)
+data = pd.concat([data,ephem_data], axis=1)
+data = data.sort_index()
+
+# filtering
+data = data.loc[data['Pyr_Plan_Tale_[W/m²]'] > 0]  # only positive values 
+data = data.loc[data['apparent_elevation'] > 5]    # sun above horizon
+data = data.loc[data['Pyr_Hor_SunP_[W/m²]'] > 5]   # only sun-up values
+ephem_data = ephem_data.loc[data.index]            # ensure equal filtering
+
+
+# use pvlib to generate dni and dhi data throug disc decomposition model
+def disc(ghi, solar_zenith, datetime_or_doy, albedo, pressure=101325, min_cos_zenith=0.065, max_zenith=87, max_airmass=12):
+    disc_irrad = pvlib.irradiance.disc(ghi, solar_zenith, datetime_or_doy, pressure, min_cos_zenith, max_zenith, max_airmass)
+
+    dni = disc_irrad['dni']
+    dhi = ghi - (dni*pvlib.tools.cosd(solar_zenith))
+    kt = disc_irrad['kt']
+
+    bad_values = (solar_zenith > max_zenith) | (ghi < 0) | (dni < 0)
+    dni = np.where(bad_values, 0, dni)
+    # ensure that closure relationship remains valid
+    dhi = np.where(bad_values, ghi, dhi)
+
+    from collections import OrderedDict
+    data = OrderedDict()
+    data['ghi'] = ghi
+    data['dni'] = dni
+    data['dhi'] = dhi
+    data['kt'] = kt
+    data['albedo'] = albedo
+
+    if isinstance(datetime_or_doy, pd.DatetimeIndex):
+        data = pd.DataFrame(data, index=datetime_or_doy)
+    return data
+
+# function for creation of custom epw file (function modified from scpript provided by Magnus Moe Nygård) 
+def make_epw(save_path, name, ghi, albedo, temp_air, wind_speed, dni=np.nan, dhi=np.nan):
+    epw_columns = ['year', 'month', 'day', 'hour', 'minute', 'data_source_unct', 'temp_air', 'temp_dew',
+                   'relative_humidity', 'atmospheric_pressure', 'etr', 'etrn', 'ghi_infrared', 'ghi', 'dni', 'dhi',
+                   'global_hor_illum', 'direct_normal_illum', 'diffuse_horizontal_illum', 'zenith_luminance',
+                   'wind_direction', 'wind_speed', 'total_sky_cover', 'opaque_sky_cover', 'visibility',
+                   'ceiling_height', 'present_weather_observation', 'present_weather_codes', 'precipitable_water',
+                   'aerosol_optical_depth', 'snow_depth', 'days_since_last_snowfall', 'albedo',
+                   'liquid_precipitation_depth', 'liquid_precipitation_quantity']
+    raw_data = pd.DataFrame(index=ghi.index,
+                            data={'ghi': ghi, 'dni': dni, 'dhi': dhi,
+                                  'temp_air': temp_air, 'wind_speed': wind_speed, 'albedo': albedo})
+   
+    # Resample to hourly values taking hourly median as best estimate:
+    raw_data = raw_data.resample('h').median()
+
+    # Allocate memory for epw-data:
+    epw_data = pd.DataFrame(index=raw_data.index, columns=epw_columns)
+
+    # Set data:
+    epw_data['year'] = epw_data.index.year
+    epw_data['month'] = epw_data.index.month
+    epw_data['day'] = epw_data.index.day
+    epw_data['hour'] = epw_data.index.hour +1
+    epw_data['minute'] = epw_data.index.minute
+    epw_data['ghi'] = raw_data['ghi']
+    epw_data['dni'] = raw_data['dni']
+    epw_data['dhi'] = raw_data['dhi']
+    epw_data['temp_air'] = raw_data['temp_air']
+    epw_data['wind_speed'] = raw_data['wind_speed']
+    epw_data['albedo']= raw_data['albedo']
+
+    # Restrict to one year:
+    start = epw_data.index[0]
+    end = pd.Timestamp(year=start.year+1, month=start.month, day=start.day, tz=start.tz)
+    epw_data = epw_data.loc[start:end]
+
+    # Sort epw_data:
+    epw_data = epw_data.sort_values(['month', 'day', 'hour', 'minute'])
+    epw_data['year'] = 2021
+
+    # Save result:
+    epw_data = epw_data.fillna(0)
+    epw_data.to_csv(path_or_buf=save_path+'/'+name+'.epw', header = False, index=False), header=False, index=False)
+
+    return epw_data
+
+
+# using period of valid measurements from the PV power plant 
+start_time = '04-13-2021 00:00:00'  # MM-DD-YYYY
+end_time = '04-13-2022 01:55:00'    # MM-DD-YYYY
+data = data[start_time : end_time]
+
+# generate dhi and dhi data by disc model
+data = disc(ghi = data['Pyr_Hor_SunP_[W/m²]'], solar_zenith = data['apparent_zenith'], datetime_or_doy=data.index, albedo = data['albedo'])
+data = data.resample('H').asfreq()           # hourly frequency in bifacial_radiance
+data['albedo'] = data['albedo'].fillna(0.2)  # ensuring an albedo value for all timesteps
+
+# make custom epw file for bifacial_radiance
+save_path = r'C:\Users\username\......'.replace('\\', '/') # add folder path
+
+epw_data = make_epw(save_path = save_path, name='solpark', ghi = data['ghi'], albedo = data['albedo'],temp_air = data['ghi'], wind_speed = data['ghi'], dni=data['dni'], dhi=data['dhi'])
