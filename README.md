@@ -18,7 +18,7 @@ This section contains the 3D-model of the bifacial PV array created in bifacial_
 The script adds the custom radiance materials file to the folder of each simulation, defines the site specifics, imports the custom EPW file and sets up the 3D-model of the bifacial PV array. All dimensions, positions, angles and labels are added according to the measurements of the bifacial PV array described in the master's thesis. 
 
 - **Ray-tracing procedure**<br>
-This file contains the script created to perform the full cell-level ray-tracing procedure in bifacial_radiance. The script generates a sky or the model, defines sensor positions, performs the irradiance analysis and stores the analysis results. 
+This file contains the script created to perform the full cell-level ray-tracing procedure in bifacial_radiance. The script generates a sky for the model, defines sensor positions, performs the irradiance analysis and stores the analysis results. 
 There are two approaches used for the sky, generation of a cumulative sky to represent the entire year, or a sky created to represent a single timestamp. For the single timestamp sky creation, a loop is used to simulate several hourly timestamps. The example below illustrates the procedure for one single timestamp, including bifacial gain calculations across the array and the creation of irradiance maps. 
 
 - **Mismatch calculations**<br>
