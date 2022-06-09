@@ -28,3 +28,7 @@ Cell parameters for the double diode model are defined and provided by module nu
 
 ## Illustration of the 3D-model created in bifacial_radiance as a part of this master's thesis
 ![Picture2](https://user-images.githubusercontent.com/102217024/172667340-25460ed7-92b5-4bf0-89f2-989c80b0ee5d.png)
+
+  
+## Prerequisites:  
+The use of the scripts included in this repository requireds the previous installation of python with numpy, jupyter, RADIANCE and bifacial_radiance. 
