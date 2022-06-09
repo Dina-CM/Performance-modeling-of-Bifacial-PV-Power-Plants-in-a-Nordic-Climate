@@ -25,10 +25,13 @@ There are two approaches used for the sky, generation of a cumulative sky to rep
 This file contains the script created to perform the mismatch calculation in PVMismatch using the cell-level irradiance input from the ray-tracing procedure. The script evaluates the electrical mismatch that occurs between individual cells and includes the influence of bypass diode configuration and circuit design to form modules and then combines the modules into the complete PV system.
 Cell parameters for the double diode model are defined and provided by module number corresponding to measurement data from the testing performed at IFE. As the simulation runs, the individual cells are copied and altered according to the input of irradiance to model the power-voltage and current-voltage characteristics at cell to system level. Like for the ray-tracing procedure for single timestamp sky files, the mismatch analysis is performed for timeseries using a loop to analyze each full cell-level irradiance simulation result desired.  
 
+- **custom_materils.rad**
+This file contains the radiance materials for the ray-tracing simulations, both the default materials and the custom radiance materials created from the tarp and ground cover characterization performed in this work.  
 
 ## Illustration of the 3D-model created in bifacial_radiance as a part of this master's thesis
 ![Picture2](https://user-images.githubusercontent.com/102217024/172667340-25460ed7-92b5-4bf0-89f2-989c80b0ee5d.png)
 
   
 ## Prerequisites:  
-The use of the scripts included in this repository requireds the previous installation of python with numpy, jupyter, RADIANCE and bifacial_radiance. 
+The use of the scripts included in this repository requireds the previous installation of [RADIANCE](https://github.com/NREL/Radiance) and [bifacial_Radiance](https://bifacial-radiance.readthedocs.io/en/latest/index.html#), as well as python with numpy and jupyter.  
+  
