@@ -18,8 +18,8 @@ from ipywidgets import interact, interactive, fixed, interact_manual, Layout
 from datetime import datetime, date
 
 # select folder to save files and results and name of simulation
-testfolder = r'C:\Users\dinac\OneDrive - NTNU\Documents\bifacial_radiance-main\bifacial_radiance\Bifacial_radiance_simuleringer\IFE_anlegg
-\Results\Simulationname' # add folder to store necessary files and results
+path = r'C:\Users\username\......'.replace('\\', '/') # add folder path
+testfolder =  r'C:\Users\username\......\Simulationname'.replace('\\', '/')  # add folder to store necessary files and results
 simulationname = 'Simulation_name'  # add simulation name
 
 startdate = '01_01_09'       # define the desired start date
@@ -54,7 +54,7 @@ demo = RadianceObj(simulationname,path = testfolder)  # Create a RadianceObj 'ob
 demo.setGround(albedo)                                # input albedo number 
 
 # Measured input from site as custom EPW file(ghi measured, Disc decomposition model applied to model dni and dhi)
-# epw-file 01-01-2021-31-12-2021
+# epw-file:
 file =  r'C:\Users\dinac\OneDrive - NTNU\Dina - NTNU\Masteroppgave\database_downloads\epw_files\Custom_epw.epw'.replace('\\', '/')
 metdata = demo.readWeatherFile(file, starttime=startdate, endtime=enddate, coerce_year = 2021) 
 
