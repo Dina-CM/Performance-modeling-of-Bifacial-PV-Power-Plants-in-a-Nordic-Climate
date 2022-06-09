@@ -33,5 +33,5 @@ This file contains the radiance materials for the ray-tracing simulations, both 
 
   
 ## Prerequisites:  
-The use of the scripts included in this repository requireds the previous installation of [RADIANCE](https://github.com/NREL/Radiance) and [bifacial_Radiance](https://bifacial-radiance.readthedocs.io/en/latest/index.html#), as well as python with numpy and jupyter.  
+The use of the scripts included in this repository requireds the previous installation of [RADIANCE](https://github.com/NREL/Radiance) and [bifacial_Radiance](https://bifacial-radiance.readthedocs.io/en/latest/index.html#), as well as python with numpy, jupyter and pvlib.  
   
